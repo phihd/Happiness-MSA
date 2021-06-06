@@ -1,0 +1,276 @@
+---
+title: "Final Project Report"
+author: "Phi Dang (732080)"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```  
+
+# 1  Introduction
+Happiness and human well-being have been such a universal concern as they produce a more impartial and balance motivation to a healthy economy. GDP is often considered a key factor to raise happiness. However, many happy countries are generating sustainable development based on trust, freedom, and life expectancy as well. On March 20th, the United Nations proclaimed the International Day of Happiness to emphasize the happiness as the ultimate goal in the lives of human beings. Since then, happiness become an indispensable part of every policy decisions, especially restriction and lockdown policies in the current virus situation.
+
+First publised in 2012, the World Happiness Report measures the state of happiness through specific indicators. The report has gained attentions from governments and many global organizations and become effective assessment criteria of a nation's development. As an data analysis enthusiast in Finland, I am curious about underlying components inducing the fact that Finland is the happiest country in the world. In this report, the lastest version of data published in 2019 is utilized to analyze the relationships among attributes.
+
+# 2  Research questions  
+This project aims to propose detail answers for the following questions:  
+1. How different attributes correlated to each other?  
+2. How could the variance in the data be performed with fewer components? What does this new performance tell?  
+3. Is it possible to have an unsupervised clustering method for this data?  
+
+# 3  Univariate Data Analysis
+  The dataset consists of attributes as follows:  
+-  Rank: Rank of the country based on the Happiness Score  
+-  Country: Country or Region  
+-  Score: A metric measured by asking the sampled people the question: "How would you rate your happiness on a scale of 0 to 10 where 10 is the happiest." 
+
+  The following attributes contributes to the calculation of the Happiness Score. Note that it might be unreliable to build a Happiness prediction model based on these attributes.  
+-  GDP  
+-  Social: Social supports  
+-  Life: Healthy life expectancy  
+-  Freedom: Freedom to make life choices  
+-  Generosity  
+-  Corruption: The perception of corruption. The higher the value is, the less corrupt that the country perceives. 
+
+
+```{r include=FALSE}
+library(corrplot)
+library(purrr)
+library(cluster)
+library(gridExtra)
+```
+
+```{r include=FALSE}
+data <- read.table("data/2019.csv",header=TRUE, sep=",")
+colnames(data) <- c('Rank','Country','Score',
+                    'GDP','Social','Life',
+                    'Freedom','Generosity','Corruption')
+
+
+sum(is.na(data))
+
+data.numeric <- subset(data, select=-c(Rank,Country))
+data.scaled = scale(data.numeric)
+```
+Let's take a look at the dataset:
+```{r echo=FALSE}
+head(data)
+``` 
+To have a closer observation of data's distribution, let's look at the following histograms of all attributes:   
+```{r echo=FALSE}
+par(mfcol=c(2,4))
+hist(data$Score,col='#5771BA',main='')
+hist(data$GDP,col='#5771BA',main='')
+hist(data$Social,col='#5771BA',main='')
+hist(data$Life,col='#5771BA',main='')
+hist(data$Freedom,col='#5771BA',main='')
+hist(data$Generosity,col='#5771BA',main='')
+hist(data$Corruption,col='#5771BA',main='')
+```
+Some useful statistics could be found in the summary of the dataset:
+```{r echo=FALSE}
+summary(data.numeric)
+```  
+Some observations:  
+- The Score is almost normally distributed. It could be noteworthy that average Happiness Score all over the world is about 5.4.  
+- Freedom, Life, GDP, and especially Social are left-skewed. This indicates most of the countries succeeded in these criteria.  
+- Corruption and Generosity are right-skewed. This proposes that not many countries have accomplished these attributes and they might be indicators to make differences in Happiness Score.  
+
+
+# 4 Bivariate Data Analysis
+```{r include=FALSE}
+color <- viridis::plasma(n = nrow(data))
+data.color <- color[ Matrix::invPerm(p = order(x = data$Score)) ]
+```
+
+```{r echo=FALSE}
+pairs(
+  formula = Score ~ .,
+  data = data.numeric,
+  col = data.color,
+  pch = 19
+)
+```
+From the pairplot, we can see that Score seems to have strong relationship with GDP, Social, and Life. Score's relationship with Freedom is slightly weaker, and with Generosity and Corruption is much weaker.   
+
+```{r echo=FALSE}
+corrplot(cor(data.numeric), method='color',pch = 21, addCoef.col = "black",type='lower')
+```  
+The correlation matrix provides a better insight of the associations among attributes. Besides outstanding correlations of GDP, Social, and Life with the target varable - Score, we can also see that GDP highly correlated to Social, Life. This happens to Social and Life as well, raising a possibility of multicollinearity issue. Fortunately, we perform PCA as a multivaraite analysis method in this project, which expresses the data in fewer component that no longer has multicollinearity. 
+
+
+# 5  Multivariate Data Analysis  
+## a) Principle Component Analysis
+
+Principal Component Analysis (PCA) looks for few linear
+combinations of p variables, losing in the process as little
+information as possible. More precisely, PCA transformation is
+an orthogonal linear transformation that transforms a p-variate
+random vector to a new coordinate system such that, the
+obtained new variables are uncorrelated, and the greatest
+possible variance lies on the first coordinate (called the first
+principal component), the second greatest variance on the
+second coordinate, and so on. (Pauliina, 2021)
+
+```{r include=FALSE}
+data.pca = princomp(data.scaled, cor = TRUE)
+data.pca$sdev^2 / sum(data.pca$sdev^2)
+```
+
+In fact, PCA transformation is highly sensitive for scaling of the variables. One can address this problem by standardizing the variables first. The data can be standardized by subtracting the sample mean $\overline{x}$, and then dividing each variable by the corresponding square root of the sample variance. In R, one can simply use scale() function to preprocess data.
+
+With R's princomp package, we can transform the dataset from seven attributes into fewer components. The plot below shows the cummilative proportion of variance explained by each number of components:  
+```{r echo=FALSE}
+plot(cumsum(data.pca$sdev^2 / sum(data.pca$sdev^2)), type = 'b', pch = 21, lty = 3, bg = 2, cex = 1.5, ylim = c(0,1),
+     xlab = 'Principal component', ylab = 'Cumulative proportion of variance explained', xaxt = 'n', yaxt = 'n')
+axis(1, at = 1:10, tck = 0.025)
+axis(2, at = 0:10 / 10, tck = 0.025, las = 2)
+abline(0,1/10, lty = 3)
+```  
+
+More than 70% of the variance is explained by only two first components. Let's visualize the scores produced by them:  
+
+```{r echo=FALSE}
+normalize <- function(x){(x - min(x)) / (max(x) - min(x))} # Normalize from zero to one
+data.PC1PC2 <- data.pca$scores[,1:2]
+data.LD1LD2 <- data.pca$loadings[,1:2]
+pc.axis <- c(-max(abs(data.PC1PC2)),max(abs(data.PC1PC2)))
+ld.axis <- c(-0.8,0.8)
+
+plot(data.PC1PC2, xlim = pc.axis, ylim = pc.axis, pch = 21, bg = 8, 
+     cex = 1-normalize(data$Rank)+0.4,
+     sub='Point size scaled with Score performance',
+     xlab='Comp.1 (54%)', ylab='Comp.2 (20%)')
+par(new = T)
+plot(data.LD1LD2, axes = F, type = 'n', xlab = '', ylab = '', xlim = ld.axis, ylim = ld.axis)
+axis(3, col = 2, tck = 0.025)
+axis(4, col = 2, tck = 0.025)
+arrows(0,0,data.LD1LD2[,1], data.LD1LD2[,2], length = 0.1, col = 2)
+text(data.LD1LD2[,1], data.LD1LD2[,2], rownames(data.LD1LD2), pos = 3)
+abline(h = 0, lty = 3)
+abline(v = 0, lty = 3)
+```  
+
+Some interpretation:  
+- PCA plot illustrates cluster of samples based on their ranks. The right-half region contains bigger datapoints than the left-half region. Inside the right-half region, bigger datapoints are in the lower half.  
+- Principle component 1, which explains most of the variance (54%), is strongly influenced by Score, Life, GDP, Social. The angles among these attributes are also small, suggesting close correlation between one with each other.  
+- Principle component 2 is strongly influenced by Generosity.  
+- Corruption and Generosity are not likely to be correlated to Score as the angles are almost 90 degrees.  
+- Freedom is also noticeable as biggest points tend to be dragged to this indicator.   
+
+
+## b) K-means clustering
+The target of the K-means algorithm is to divide datapoints in K clusters so that the within-cluster sum of squares (withinss) is minimized. Moving Centers Method is utilized as follows (Pauliina, 2021):  
+1. Choose randomly $k$ data points $c_1,...c_k$ out of $x_1,...,x_n$.  
+2. Define k sets $A_1,...A_k$ such that $A_t=\{x_i|d(x_i,c_t)\leq d(x_i,c_j), for \; j \neq t\}$.  
+3. Calculate new centers $c_1,...,c_k$ of the sets $A_1,...,A_k$  
+4. Repeat steps 2 and 3 until convergence.  
+
+There are several considerations:  
+- What distance is the most appropriate?  
+- How to define center?  
+- Which $k$ is the best one?  
+
+Using R's kmeans package, the algorithm of Hartigan and Wong (1979) is used by default. It exploits Euclidean distances and define centers as the mean of their Votonoi sets.  
+
+For determining the best $k$, the project used Average Silhouette Method. In a nutshell, the average silhouette method assesses the clustering's accuracy. In other words, it establishes how well each object fits into its cluster. A successful clustering is shown by a high average silhouette diameter. For various values of k, the average silhouette formula computes the average silhouette of observations. Over a set of potential values for k, the ideal number of clusters k is the one that maximizes the average silhouette.
+
+```{r include=FALSE}
+set.seed(123)
+```
+
+```{r echo=FALSE}
+
+# function to compute average silhouette for k clusters
+avg_sil <- function(k) {
+  km.res <- kmeans(data.scaled, centers = k, nstart = 25)
+  ss <- silhouette(km.res$cluster, dist(data.scaled))
+  mean(ss[, 3])
+}
+
+# Compute and plot wss for k = 2 to k = 15
+k.values <- 2:15
+
+# extract avg silhouette for 2-15 clusters
+avg_sil_values <- map_dbl(k.values, avg_sil)
+
+plot(k.values, avg_sil_values,
+       type = "b", pch = 19, frame = FALSE, 
+       xlab = "Number of clusters K",
+       ylab = "Average Silhouettes")
+```  
+Now we can use K-means clustering with $k=3$:  
+```{r}
+data.kmeans2 <- kmeans(data.scaled,centers=3,nstart=25)
+print(paste('Total variance explained by clustering:',
+            round(data.kmeans2$betweenss/data.kmeans2$totss,2)*100,'%'))
+```  
+The variance explained by this clustering way is not really high. Bear in mind that PCA-transformed data is available, we can perform K-means clustering on the first two components. Starting with Silhouette once again to find the ideal $k$:
+
+
+```{r echo=FALSE}
+
+# function to compute average silhouette for k clusters
+avg_sil <- function(k) {
+  km.res <- kmeans(data.PC1PC2, centers = k, nstart = 25)
+  ss <- silhouette(km.res$cluster, dist(data.PC1PC2))
+  mean(ss[, 3])
+}
+
+# Compute and plot wss for k = 2 to k = 15
+k.values <- 2:15
+
+# extract avg silhouette for 2-15 clusters
+avg_sil_values <- map_dbl(k.values, avg_sil)
+
+plot(k.values, avg_sil_values,
+       type = "b", pch = 19, frame = FALSE, 
+       xlab = "Number of clusters K",
+       ylab = "Average Silhouettes")
+```  
+
+
+```{r}
+data.kmeans <- kmeans(data.PC1PC2,centers=3,nstart=25)
+print(paste('Total variance explained by clustering:',
+            round(data.kmeans$betweenss/data.kmeans$totss,2)*100,'%'))
+```  
+
+```{r eval=FALSE, include=FALSE}
+clusplot(x=data.PC1PC2,clus=data.kmeans$cluster,stand=T,color=T,labels=2,lines=0, 
+         col.clus=c('#009E73','#CC79A7','#D55E00'), col.p=c('#D55E00', '#CC79A7','#009E73')[data.kmeans$cluster], 
+         col.txt=c('#D55E00', '#CC79A7','#009E73')[data.kmeans$cluster],  sub='',cex=0.85, main = 'K-means clustering with K = 3')
+```
+
+
+The total variance explained increase significantly. In two-dimensional case, the results can be easily illustrated with a scatter plot:  
+```{r echo=FALSE}
+# In two-dimensional case, the results can be easily illustrated
+# with a scatter plot. (When dimensions are more than two, one can use
+# PCA for dimension reduction and plot the first two principal
+# components, for example.)
+plot(data.PC1PC2,
+     pch = 16, col = data.kmeans$cluster,type='n',
+     main = "K-mean clustering with K = 3")
+text(data.PC1PC2, label=data$Rank, col=data.kmeans$cluster,cex=0.7)
+# The display looks promising. Let's add the centers to the plot:
+# (The cluster centers)
+points(x = data.kmeans$centers[,1],
+       y = data.kmeans$centers[,2],
+       pch = 23, bg = c(1,2,3), cex = 2, col = c(2,3,1))
+```  
+
+We can observe that the red cluster contains most of high-ranking countries in term of Happiness Score. Likewise, the green cluster and the black cluster contain entries with middle and low ranks, respectively.  
+
+# 6 Conclusion
+With all above analyses, answers for the research questions will be summarized as follows:  
+1. According to the bivariate data analysis, Score has strong relationships with GDP, Social, and Life. This goes well with a common perception that money could buy happiness. Having a good social network and healthy life is also important to be happy.  
+2. The dataset can be performed with two components capturing more 70% of total variance by applying PCA to the standardized data. Once again, GDP, Social, and Life appear to be dominating indicator at this point. Freedom could also be a good measure of happiness.  
+3. K-means is an reasonable clustering method for this dataset as long as it goes with PCA transformation.  
+
+# 7 Critical Evaluation
+Some ecomonists have challenged the notion that a survey can capture subjective well-being. They found that people's evaluation of happiness might be influenced by their country's school system grades tests. This might induce bias in happiness score and lead to misleading resuilts.  
+
+Futhermore, some similar work has suggested the possibility that Corruption would be a good predictor while Social would be a bad one. This might be capture if the PCA in this project is analyzed deeper by looking at other components rather than just the first two.
